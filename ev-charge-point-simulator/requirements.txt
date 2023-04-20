@@ -1,2 +1,4 @@
 ocpp
 websockets
+boto3
+paho-mqtt

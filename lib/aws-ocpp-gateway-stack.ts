@@ -21,6 +21,7 @@ import path from 'path';
 import fetch from 'sync-fetch';
 
 interface AwsOcppGatewayStackProps extends cdk.StackProps {
+  isLocalStack?: boolean;
   domainName?: string;
 }
 
@@ -31,7 +32,7 @@ export class AwsOcppGatewayStack extends cdk.Stack {
     const vpcCidr = '10.0.0.0/16';
     const tcpPort = 80;
     const tlsPort = 443;
-    const mqttPort = 8883;
+    let mqttPort = 8883;
     const ocppSupportedProtocols = ['ocpp1.6', 'ocpp2.0', 'ocpp2.0.1'];
 
     const defaultLambdaProps = {
@@ -166,34 +167,34 @@ export class AwsOcppGatewayStack extends cdk.Stack {
       actions: [new actions.SqsQueueAction(deletedThings)],
     });
 
-    const iotGatewayPolicy = new iot.CfnPolicy(this, 'Policy', {
-      policyDocument: {
-        Version: '2012-10-17',
-        Statement: [
-          {
-            Effect: iam.Effect.ALLOW,
-            Action: ['iot:Connect'],
-            Resource: [`arn:aws:iot:${this.region}:${this.account}:client/*`],
-          },
-          {
-            Effect: iam.Effect.ALLOW,
-            Action: ['iot:Publish', 'iot:Receive'],
-            Resource: [
-              `arn:aws:iot:${this.region}:${this.account}:topic/*/in`,
-              `arn:aws:iot:${this.region}:${this.account}:topic/*/out`,
-            ],
-          },
-          {
-            Effect: iam.Effect.ALLOW,
-            Action: ['iot:Subscribe'],
-            Resource: [
-              `arn:aws:iot:${this.region}:${this.account}:topicfilter/*/in`,
-              `arn:aws:iot:${this.region}:${this.account}:topicfilter/*/out`,
-            ],
-          },
-        ],
-      },
-    });
+    // const iotGatewayPolicy = new iot.CfnPolicy(this, 'Policy', {
+    //   policyDocument: {
+    //     Version: '2012-10-17',
+    //     Statement: [
+    //       {
+    //         Effect: iam.Effect.ALLOW,
+    //         Action: ['iot:Connect'],
+    //         Resource: [`arn:aws:iot:${this.region}:${this.account}:client/*`],
+    //       },
+    //       {
+    //         Effect: iam.Effect.ALLOW,
+    //         Action: ['iot:Publish', 'iot:Receive'],
+    //         Resource: [
+    //           `arn:aws:iot:${this.region}:${this.account}:topic/*/in`,
+    //           `arn:aws:iot:${this.region}:${this.account}:topic/*/out`,
+    //         ],
+    //       },
+    //       {
+    //         Effect: iam.Effect.ALLOW,
+    //         Action: ['iot:Subscribe'],
+    //         Resource: [
+    //           `arn:aws:iot:${this.region}:${this.account}:topicfilter/*/in`,
+    //           `arn:aws:iot:${this.region}:${this.account}:topicfilter/*/out`,
+    //         ],
+    //       },
+    //     ],
+    //   },
+    // });
 
     const iotCreateKeysAndCertificateCr = new cr.AwsCustomResource(this, 'CreateKeysAndCertificate', {
       policy: cr.AwsCustomResourcePolicy.fromStatements([
@@ -227,33 +228,33 @@ export class AwsOcppGatewayStack extends cdk.Stack {
     const iotPublicKey = iotCreateKeysAndCertificateCr.getResponseField('keyPair.PublicKey');
     const iotPrivateKey = iotCreateKeysAndCertificateCr.getResponseField('keyPair.PrivateKey');
 
-    new cr.AwsCustomResource(this, 'AttachPolicyIOT', {
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          resources: cr.AwsCustomResourcePolicy.ANY_RESOURCE,
-          actions: ['iot:AttachPolicy', 'iot:DetachPolicy'],
-        }),
-      ]),
-      logRetention: logs.RetentionDays.ONE_DAY,
-      onCreate: {
-        service: 'Iot',
-        action: 'attachPolicy',
-        parameters: {
-          policyName: iotGatewayPolicy.attrId,
-          target: iotCertificateArn,
-        },
-        physicalResourceId: cr.PhysicalResourceId.of(Date.now().toString()),
-      },
-      onDelete: {
-        service: 'Iot',
-        action: 'detachPolicy',
-        parameters: {
-          policyName: iotGatewayPolicy.attrId,
-          target: iotCertificateArn,
-        },
-      },
-    });
+    // new cr.AwsCustomResource(this, 'AttachPolicyIOT', {
+    //   policy: cr.AwsCustomResourcePolicy.fromStatements([
+    //     new iam.PolicyStatement({
+    //       effect: iam.Effect.ALLOW,
+    //       resources: cr.AwsCustomResourcePolicy.ANY_RESOURCE,
+    //       actions: ['iot:AttachPolicy', 'iot:DetachPolicy'],
+    //     }),
+    //   ]),
+    //   logRetention: logs.RetentionDays.ONE_DAY,
+    //   onCreate: {
+    //     service: 'Iot',
+    //     action: 'attachPolicy',
+    //     parameters: {
+    //       policyName: iotGatewayPolicy.attrId,
+    //       target: iotCertificateArn,
+    //     },
+    //     physicalResourceId: cr.PhysicalResourceId.of(Date.now().toString()),
+    //   },
+    //   onDelete: {
+    //     service: 'Iot',
+    //     action: 'detachPolicy',
+    //     parameters: {
+    //       policyName: iotGatewayPolicy.attrId,
+    //       target: iotCertificateArn,
+    //     },
+    //   },
+    // });
 
     const amazonRootCA = fetch('https://www.amazontrust.com/repository/AmazonRootCA1.pem').text();
 
@@ -336,6 +337,7 @@ export class AwsOcppGatewayStack extends cdk.Stack {
       environment: {
         AWS_REGION: cdk.Stack.of(this).region,
         DYNAMODB_CHARGE_POINT_TABLE: chargePointTable.tableName,
+        IS_LOCALSTACK: props?.isLocalStack ? '1' : '0',
         IOT_ENDPOINT: iotEndpoint,
         IOT_PORT: `${mqttPort}`,
         OCPP_PROTOCOLS: ocppSupportedProtocols.join(','),
@@ -355,6 +357,7 @@ export class AwsOcppGatewayStack extends cdk.Stack {
       protocol: ecs.Protocol.TCP,
     });
 
+    // it seems this is not creating the directory in the container
     container.addMountPoints({
       containerPath: '/etc/iot-certificates/',
       sourceVolume: 'iot-certificate-volume',
@@ -490,20 +493,20 @@ export class AwsOcppGatewayStack extends cdk.Stack {
       }),
     });
 
-    messageProcessor.role?.attachInlinePolicy(
-      new iam.Policy(this, 'PublishToOutTopicPolicy', {
-        statements: [
-          new iam.PolicyStatement({
-            effect: iam.Effect.ALLOW,
-            resources: [
-              `arn:aws:iot:${this.region}:${this.account}:topic/$aws/things/*/shadow/update`,
-              `arn:aws:iot:${this.region}:${this.account}:topic/*/out`,
-            ],
-            actions: ['iot:Publish'],
-          }),
-        ],
-      }),
-    );
+    // messageProcessor.role?.attachInlinePolicy(
+    //   new iam.Policy(this, 'PublishToOutTopicPolicy', {
+    //     statements: [
+    //       new iam.PolicyStatement({
+    //         effect: iam.Effect.ALLOW,
+    //         resources: [
+    //           `arn:aws:iot:${this.region}:${this.account}:topic/$aws/things/*/shadow/update`,
+    //           `arn:aws:iot:${this.region}:${this.account}:topic/*/out`,
+    //         ],
+    //         actions: ['iot:Publish'],
+    //       }),
+    //     ],
+    //   }),
+    // );
 
     const incomingMessageEvent = new lambdaes.SqsEventSource(incomingMessages);
     messageProcessor.addEventSource(incomingMessageEvent);

@@ -18,4 +18,5 @@ new AwsOcppGatewayStack(app, 'AwsOcppGatewayStack', {
   // This will enable TLS for your gateway. (wss://gateway.yourdomain.com)
 
   // domainName: 'yourdomain.com',
+  isLocalStack: true,
 });

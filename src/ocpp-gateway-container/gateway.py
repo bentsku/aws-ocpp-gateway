@@ -2,11 +2,17 @@ import asyncio_mqtt
 import boto3
 import logging
 import os
-import ssl
+# import ssl
 
 logging.basicConfig(level=logging.ERROR)
+is_localstack = os.environ.get("IS_LOCALSTACK") == '1'
 
-dynamodb = boto3.resource("dynamodb", region_name=os.environ["AWS_REGION"])
+if is_localstack:
+    endpoint_url = f"http://{os.environ.get('LOCALSTACK_HOSTNAME', '')}:4566"
+    dynamodb = boto3.resource("dynamodb", region_name=os.environ["AWS_REGION"], endpoint_url=endpoint_url)
+else:
+    dynamodb = boto3.resource("dynamodb", region_name=os.environ["AWS_REGION"])
+
 charge_point_table = dynamodb.Table(os.environ["DYNAMODB_CHARGE_POINT_TABLE"])
 
 
@@ -24,9 +30,15 @@ class Gateway(asyncio_mqtt.Client):
     def __init__(self, charge_point_id, websocket_connection):
         self.charge_point_id = charge_point_id
         self.websocket_connection = websocket_connection
-        self.ssl = self.create_ssl_context()
-        self.hostname = os.environ["IOT_ENDPOINT"]
-        self.port = int(os.environ["IOT_PORT"])
+        # TODO: seems the secrets aren't passed to the task, so skip that part, we don't make use of certs anyway
+        # self.ssl = self.create_ssl_context()
+        if is_localstack:
+            splitted = os.environ["IOT_ENDPOINT"].split(":")
+            self.hostname = os.environ['LOCALSTACK_HOSTNAME']
+            self.port = int(splitted[1])
+        else:
+            self.hostname = os.environ["IOT_ENDPOINT"]
+            self.port = int(os.environ["IOT_PORT"])
 
         if not self.charge_point_exists():
             error = (
@@ -38,7 +50,6 @@ class Gateway(asyncio_mqtt.Client):
             self.hostname,
             self.port,
             client_id=self.charge_point_id,
-            tls_context=self.ssl,
         )
 
     def charge_point_exists(self):
@@ -55,18 +66,18 @@ class Gateway(asyncio_mqtt.Client):
 
         return "Item" in dynamo_db_response
 
-    def create_ssl_context(self):
-        """Creates an SSL context for the MQTT client"""
-        context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-        context.verify_mode = ssl.CERT_REQUIRED
-        context.load_verify_locations(cafile="/etc/iot-certificates/AmazonRootCA1.pem")
-        context.load_cert_chain(
-            certfile="/etc/iot-certificates/iot.pem",
-            keyfile="/etc/iot-certificates/iot.key",
-        )
-        context.tls_version = ssl.PROTOCOL_TLSv1_2
-        context.ciphers = None
-        return context
+    # def create_ssl_context(self):
+    #     """Creates an SSL context for the MQTT client"""
+    #     context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    #     context.verify_mode = ssl.CERT_REQUIRED
+    #     context.load_verify_locations(cafile="/etc/iot-certificates/AmazonRootCA1.pem")
+    #     context.load_cert_chain(
+    #         certfile="/etc/iot-certificates/iot.pem",
+    #         keyfile="/etc/iot-certificates/iot.key",
+    #     )
+    #     context.tls_version = ssl.PROTOCOL_TLSv1_2
+    #     context.ciphers = None
+    #     return context
 
     async def relay(self, topic):
         """Relays a message from IoT Core topic to a websocket"""

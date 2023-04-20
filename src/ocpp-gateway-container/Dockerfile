@@ -5,12 +5,15 @@ RUN yum groupinstall "Development Tools" -y
 RUN yum install openssl-libs -y
 RUN yum install python3.10 python3.10-devel -y
 
-
+# this order allows better caching of layers, it would always run pip install even if requirements.txt didn't change
 RUN mkdir -p /opt/ocpp-gateway
-COPY ./ /opt/ocpp-gateway/
-
 RUN python3.10 -m venv /opt/ocpp-gateway/
-RUN . /opt/ocpp-gateway/bin/activate && pip install -r /opt/ocpp-gateway/requirements.txt
+
+COPY requirements.txt /opt/ocpp-gateway/requirements.txt
+
+RUN . /opt/ocpp-gateway/bin/activate && pip install --no-cache-dir -r /opt/ocpp-gateway/requirements.txt
+
+COPY ./ /opt/ocpp-gateway/
 
 EXPOSE 80
 

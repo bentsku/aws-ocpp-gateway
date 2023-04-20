@@ -210,4 +210,5 @@ cdk.context.json
 
 # venv
 venv
+.venv
 __pycache__

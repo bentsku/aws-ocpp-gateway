@@ -7,7 +7,7 @@ import websockets
 
 import gateway
 
-logging.basicConfig(format="%(message)s", level=logging.ERROR)
+logging.basicConfig(format="%(message)s", level=logging.DEBUG)
 
 OCPP_PROTOCOLS = os.environ["OCPP_PROTOCOLS"].split(",")
 OCPP_GATEWAY_PORT = int(os.environ["OCPP_GATEWAY_PORT"])
@@ -49,7 +49,7 @@ async def handler(websocket, path):
         websockets.exceptions.InvalidHandshake,
         websockets.exceptions.WebSocketException,
     ) as e:
-        logging.error(e)
+        logging.exception(e)
         return await websocket.close()
 
 
